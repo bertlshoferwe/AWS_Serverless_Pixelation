@@ -19,6 +19,7 @@ Terraform installed
 AWS CLI configured with proper access credentials
 A GitHub repository for hosting the Lambda function code (optional)
 Setup
+
 1. Clone the Repository
 Clone this repository to your local machine:
 
@@ -63,6 +64,7 @@ The function is triggered by S3 events when a .jpg file is uploaded to image-sou
 IAM Roles and Policies:
 Lambda requires permissions to access S3 and CloudWatch for logging.
 EC2 requires permissions to stop the instance after it has completed its task.
+
 5. User Data Script
 The user_data.sh script is executed when the EC2 instance starts. It performs the following:
 
@@ -70,41 +72,29 @@ Installs dependencies (git, awscli, wget, unzip, curl).
 Clones the repository and sets up the Lambda function code.
 Downloads and prepares the Pillow dependency.
 Packages the Lambda function and uploads it to S3.
+
 6. Testing the Lambda Function
 After deployment:
 
 Upload a .jpg image to image-source-bucket (you can use the AWS console or AWS CLI).
 The Lambda function will be triggered automatically.
 The pixelated images will be uploaded to image-processed-bucket.
+
 7. Shutting Down the EC2 Instance
 Once the EC2 instance has completed the setup and uploaded the Lambda function deployment package, it will stop itself automatically using the IAM permissions granted to it.
 
-Example Lambda Function Code
-```python
-import os
-import json
-import uuid
-import boto3
-from botocore.exceptions import ClientError
-from PIL import Image
-
-processed_bucket = os.environ['processed_bucket']
-s3_client = boto3.client('s3')
-
-def lambda_handler(event, context):
-    # Main logic for handling the S3 event and processing the image.
-    ...
-```
 IAM Roles and Permissions
 Lambda Role (lambda_pixelator_role): Grants Lambda permissions to access S3 and CloudWatch.
 EC2 Role (ec2_role): Allows EC2 to stop itself after the deployment process.
 Lambda Permissions: Grants S3 permission to invoke the Lambda function on .jpg file uploads.
+
 Troubleshooting
+
 Common Issues
 Lambda Timeout: Ensure that the Lambda function has enough time to process larger images.
+
 Missing Permissions: Ensure that IAM roles and policies are correctly assigned.
-Logs
-Check the Lambda function's logs in CloudWatch for detailed error messages or debugging information.
+
 
 Cleanup
 To delete the infrastructure, run:
@@ -113,11 +103,5 @@ To delete the infrastructure, run:
 terraform destroy
 ```
 This will remove all resources created by Terraform, including the EC2 instance, S3 buckets, Lambda function, and IAM roles.
-
-Contributing
-Feel free to fork this repository, submit issues, or create pull requests. Contributions are welcome!
-
-License
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 Make sure to replace placeholders such as https://github.com/username/repository.git with actual values specific to your project. Also, modify any details related to your infrastructure as needed.
