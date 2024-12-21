@@ -3,80 +3,63 @@ import json
 import uuid
 import boto3
 from botocore.exceptions import ClientError
-from PIL import Image  # Import Image from PIL
+from PIL import Image
 
-# bucketname for pixelated images
-processed_bucket = os.environ['processed_bucket']
-s3_client = boto3.client('s3')
+# Bucket name for pixelated images
+PROCESSED_BUCKET = os.environ['processed_bucket']
+S3_CLIENT = boto3.client('s3')
 
 def lambda_handler(event, context):
     print(event)
-    
-    # get bucket and object key from event object
+
+    # Get bucket and object key from event object
     source_bucket = event['Records'][0]['s3']['bucket']['name']
     key = event['Records'][0]['s3']['object']['key']
     
-    # Generate a temp name, and set location for our original image
-    object_key = str(uuid.uuid4()) + '-' + key
-    img_download_path = '/tmp/{}'.format(object_key)
+    # Generate a unique name for the image and set temp location
+    object_key = f"{uuid.uuid4()}-{key}"
+    img_download_path = f"/tmp/{object_key}"
     
-    # Check if the object exists in the source bucket
     try:
-        s3_client.head_object(Bucket=source_bucket, Key=key)
-    except ClientError as e:
-        print(f"Error: Object {key} not found in bucket {source_bucket}.")
-        return {
-            'statusCode': 404,
-            'body': json.dumps(f"Object {key} not found in bucket {source_bucket}.")
-        }
-
-    # Download the source image from S3 to temp location within execution environment
-    try:
+        # Ensure the object exists
+        S3_CLIENT.head_object(Bucket=source_bucket, Key=key)
+        
+        # Download the source image
         with open(img_download_path, 'wb') as img_file:
-            s3_client.download_fileobj(source_bucket, key, img_file)
+            S3_CLIENT.download_fileobj(source_bucket, key, img_file)
     except ClientError as e:
-        print(f"Error downloading file {key} from bucket {source_bucket}: {str(e)}")
-        return {
-            'statusCode': 500,
-            'body': json.dumps(f"Error downloading file: {str(e)}")
-        }
+        error_message = f"Error accessing file {key} in bucket {source_bucket}: {str(e)}"
+        print(error_message)
+        return {'statusCode': 500, 'body': json.dumps(error_message)}
 
-    # Pixelate images in different resolutions
+    # Define pixelation sizes
+    pixel_sizes = [8, 16, 32, 48, 64]
+    temp_files = []
+
     try:
-        pixelate((8, 8), img_download_path, f'/tmp/pixelated-8x8-{object_key}')
-        pixelate((16, 16), img_download_path, f'/tmp/pixelated-16x16-{object_key}')
-        pixelate((32, 32), img_download_path, f'/tmp/pixelated-32x32-{object_key}')
-        pixelate((48, 48), img_download_path, f'/tmp/pixelated-48x48-{object_key}')
-        pixelate((64, 64), img_download_path, f'/tmp/pixelated-64x64-{object_key}')
+        # Pixelate and save images
+        for size in pixel_sizes:
+            pixelated_path = f"/tmp/pixelated-{size}x{size}-{object_key}"
+            pixelate((size, size), img_download_path, pixelated_path)
+            temp_files.append((pixelated_path, f"pixelated-{size}x{size}-{key}"))
     except Exception as e:
-        print(f"Error pixelating image: {str(e)}")
-        return {
-            'statusCode': 500,
-            'body': json.dumps(f"Error pixelating image: {str(e)}")
-        }
+        error_message = f"Error pixelating image: {str(e)}"
+        print(error_message)
+        return {'statusCode': 500, 'body': json.dumps(error_message)}
 
-    # Upload the pixelated versions to the destination bucket
     try:
-        s3_client.upload_file(f'/tmp/pixelated-8x8-{object_key}', processed_bucket, f'pixelated-8x8-{key}')
-        s3_client.upload_file(f'/tmp/pixelated-16x16-{object_key}', processed_bucket, f'pixelated-16x16-{key}')
-        s3_client.upload_file(f'/tmp/pixelated-32x32-{object_key}', processed_bucket, f'pixelated-32x32-{key}')
-        s3_client.upload_file(f'/tmp/pixelated-48x48-{object_key}', processed_bucket, f'pixelated-48x48-{key}')
-        s3_client.upload_file(f'/tmp/pixelated-64x64-{object_key}', processed_bucket, f'pixelated-64x64-{key}')
+        # Upload pixelated images
+        for local_path, s3_key in temp_files:
+            S3_CLIENT.upload_file(local_path, PROCESSED_BUCKET, s3_key)
     except ClientError as e:
-        print(f"Error uploading pixelated images: {str(e)}")
-        return {
-            'statusCode': 500,
-            'body': json.dumps(f"Error uploading pixelated images: {str(e)}")
-        }
+        error_message = f"Error uploading pixelated images: {str(e)}"
+        print(error_message)
+        return {'statusCode': 500, 'body': json.dumps(error_message)}
 
-    return {
-        'statusCode': 200,
-        'body': json.dumps('Successfully processed and uploaded pixelated images.')
-    }
+    return {'statusCode': 200, 'body': json.dumps('Successfully processed and uploaded pixelated images.')}
 
 def pixelate(pixelsize, image_path, pixelated_img_path):
-    # Ensure Image module is used here
-    img = Image.open(image_path)
-    temp_img = img.resize(pixelsize, Image.BILINEAR)
-    new_img = temp_img.resize(img.size, Image.NEAREST)
-    new_img.save(pixelated_img_path)
+    with Image.open(image_path) as img:
+        temp_img = img.resize(pixelsize, Image.BILINEAR)
+        pixelated_img = temp_img.resize(img.size, Image.NEAREST)
+        pixelated_img.save(pixelated_img_path)
